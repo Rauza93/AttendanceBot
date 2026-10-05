@@ -1,6 +1,0 @@
-CARA MENGGABUNGKAN INSTALLER PART:
-1. Download kedua file: Setup-partaa dan Setup-partab
-2. Taruh di folder yang sama
-3. Buka Command Prompt di folder itu:
-   copy /b Setup-partaa + Setup-partab AttendanceBot-Setup-v1.0.0.exe
-4. Klik kanan AttendanceBot-Setup-v1.0.0.exe -> Run as administrator
