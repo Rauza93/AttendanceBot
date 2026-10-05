@@ -1,0 +1,6 @@
+CARA MENGGABUNGKAN PART:
+1. Download kedua file: AttendanceBot-partaa dan AttendanceBot-partab
+2. Taruh di folder yang sama (misal C:\AttendanceBot)
+3. Buka Command Prompt di folder itu, jalankan:
+   copy /b AttendanceBot-partaa + AttendanceBot-partab AttendanceBot-win-x64.zip
+4. Extract AttendanceBot-win-x64.zip seperti biasa

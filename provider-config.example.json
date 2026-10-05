@@ -1,0 +1,4 @@
+{
+  "Gps": { "LoginUrl": "", "StatusSelector": "", "LoginUsernameSelector": "", "LoginPasswordSelector": "", "ClockInSelector": "", "ClockOutSelector": "", "SuccessSelector": "" },
+  "Network": { "LoginUrl": "", "StatusSelector": "", "LoginUsernameSelector": "", "LoginPasswordSelector": "", "ClockInSelector": "", "ClockOutSelector": "", "SuccessSelector": "" }
+}
