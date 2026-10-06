@@ -1,1 +1,63 @@
-<Window x:Class="AttendanceBot.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="AttendanceBot" Width="1100" Height="700" MinWidth="800" MinHeight="500" Background="#101827"><Grid Margin="24"><Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel Grid.Column="0"><TextBlock Text="AttendanceBot" Foreground="#80D8FF" FontSize="22" FontWeight="Bold" Margin="4,4,4,28"/><Button Content="Dashboard" Click="NavigateClick" Tag="Dashboard"/><Button Content="Profiles" Click="NavigateClick" Tag="Profiles"/><Button Content="Schedule" Click="NavigateClick" Tag="Schedule"/><Button Content="History" Click="NavigateClick" Tag="History"/><Button Content="Settings" Click="NavigateClick" Tag="Settings"/><Button Content="Logs" Click="NavigateClick" Tag="Logs"/></StackPanel><TabControl x:Name="Pages" Grid.Column="1" Margin="28,0,0,0" Background="#101827" BorderThickness="0"><TabItem Header="Dashboard"><ScrollViewer><StackPanel><TextBlock Text="Dashboard" Foreground="White" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="Automation Status" Foreground="#AAB7C4" Margin="0,24,0,4"/><Border Background="#182638" Padding="18" CornerRadius="8"><StackPanel><TextBlock Text="Ready" Foreground="#72E6A5" FontSize="20"/><TextBlock Text="Next schedule: not configured" Foreground="#C9D4DF"/><TextBlock Text="Network: not checked     Location: not checked" Foreground="#C9D4DF" Margin="0,8,0,0"/></StackPanel></Border><TextBlock Text="Today's Attendance" Foreground="White" FontSize="20" Margin="0,28,0,10"/><Border Background="#182638" Padding="18" CornerRadius="8"><TextBlock Text="No attendance results yet. Configure an allowed profile and real provider URLs/selectors first." Foreground="#C9D4DF" TextWrapping="Wrap"/></Border><StackPanel Orientation="Horizontal" Margin="0,20,0,0"><Button Content="Run Now"/><Button Content="Retry Failed"/><Button Content="Stop Queue"/></StackPanel></StackPanel></ScrollViewer></TabItem><TabItem Header="Profiles"><StackPanel><TextBlock Text="Profiles" Foreground="White" FontSize="28"/><TextBlock Text="Manage enabled, approved attendance profiles here." Foreground="#C9D4DF" Margin="0,16"/><Button Content="Add Profile" Width="120" HorizontalAlignment="Left"/></StackPanel></TabItem><TabItem Header="Schedule"><StackPanel><TextBlock Text="Schedule" Foreground="White" FontSize="28"/><CheckBox Content="Auto Clock In" Foreground="White" Margin="0,18,0,6"/><CheckBox Content="Auto Clock Out" Foreground="White"/><TextBlock Text="Schedule persistence is applied through the EF Core settings store." Foreground="#C9D4DF" Margin="0,16"/></StackPanel></TabItem><TabItem Header="History"><TextBlock Text="History will show persisted attendance results and screenshots." Foreground="#C9D4DF"/></TabItem><TabItem Header="Settings"><StackPanel><TextBlock Text="Settings" Foreground="White" FontSize="28"/><TextBlock Text="Sensitive settings require the configured operator PIN." Foreground="#C9D4DF" Margin="0,16"/><TextBlock Text="Telegram: Enabled, Bot Token, Chat ID, notification flags, and Test Telegram are stored through the service layer." Foreground="#C9D4DF" TextWrapping="Wrap"/></StackPanel></TabItem><TabItem Header="Logs"><TextBlock Text="Logs are stored in %ProgramData%\AttendanceBot\Logs with daily rolling and secret redaction." Foreground="#C9D4DF" TextWrapping="Wrap"/></TabItem></TabControl></Grid></Window>
+<Window x:Class="AttendanceBot.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AttendanceBot" Width="1120" Height="760" MinWidth="900" MinHeight="620"
+        Background="#101827" Foreground="#EAF1F7">
+    <Window.Resources>
+        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#EAF1F7"/><Setter Property="Margin" Value="3"/></Style>
+        <Style TargetType="TextBox"><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="6"/><Setter Property="MinWidth" Value="180"/></Style>
+        <Style TargetType="Button"><Setter Property="Margin" Value="4"/><Setter Property="Padding" Value="12,7"/></Style>
+        <Style TargetType="CheckBox"><Setter Property="Foreground" Value="#EAF1F7"/><Setter Property="Margin" Value="6"/></Style>
+        <Style TargetType="ComboBox"><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="4"/><Setter Property="MinWidth" Value="180"/></Style>
+        <Style TargetType="TabItem"><Setter Property="Padding" Value="12,8"/></Style>
+        <DataTemplate x:Key="ProfileTemplate"><TextBlock Text="{Binding Name}" Foreground="#182638"/></DataTemplate>
+    </Window.Resources>
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#182638" Padding="12">
+            <DockPanel><TextBlock Text="AttendanceBot" FontSize="22" FontWeight="Bold" Foreground="#80D8FF"/><TextBlock x:Name="StatusText" DockPanel.Dock="Right" HorizontalAlignment="Right" Text="Siap" VerticalAlignment="Center"/></DockPanel>
+        </Border>
+        <TabControl x:Name="Pages" SelectionChanged="Pages_SelectionChanged" Background="#101827" BorderThickness="0" Margin="12">
+            <TabItem Header="Dashboard"><ScrollViewer><StackPanel Margin="18">
+                <TextBlock Text="Dashboard" FontSize="28" FontWeight="SemiBold"/>
+                <TextBlock x:Name="NoProfilesText" Text="Belum ada profile absensi." FontSize="18" Margin="4,24"/>
+                <Button Content="Tambah Profile" HorizontalAlignment="Left" Click="AddProfileFromDashboard_Click"/>
+                <TextBlock x:Name="NoScheduleText" Text="Jadwal otomatis belum dikonfigurasi." FontSize="18" Margin="4,20"/>
+                <Button Content="Atur Jadwal" HorizontalAlignment="Left" Click="OpenSchedule_Click"/>
+                <TextBlock Text="Hasil absensi terbaru" FontSize="20" Margin="4,28,4,8"/>
+                <ListView x:Name="DashboardResults" Height="250"/>
+            </StackPanel></ScrollViewer></TabItem>
+            <TabItem Header="Profiles"><ScrollViewer><Grid Margin="12"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <DockPanel Grid.Column="0" LastChildFill="True"><StackPanel DockPanel.Dock="Top"><Button Content="Tambah Profile" Click="NewProfile_Click"/><Button Content="Hapus Profile" Click="DeleteProfile_Click"/></StackPanel><ListBox x:Name="ProfileList" SelectionChanged="ProfileList_SelectionChanged" DisplayMemberPath="Name"/></DockPanel>
+                <StackPanel Grid.Column="1" Margin="20,0,0,0">
+                    <TextBlock Text="Data Profile" FontSize="24" FontWeight="SemiBold"/>
+                    <WrapPanel><StackPanel><TextBlock Text="Nama *"/><TextBox x:Name="ProfileName"/></StackPanel><StackPanel><TextBlock Text="Employee Code (opsional)"/><TextBox x:Name="EmployeeCode"/></StackPanel><StackPanel><TextBlock Text="Queue Order"/><TextBox x:Name="QueueOrder" Text="0"/></StackPanel></WrapPanel>
+                    <WrapPanel><CheckBox x:Name="ProfileEnabled" Content="Profile aktif" IsChecked="True"/><CheckBox x:Name="GpsEnabled" Content="Website GPS Enabled" IsChecked="True"/><CheckBox x:Name="NetworkEnabled" Content="Website Network Enabled" IsChecked="True"/></WrapPanel>
+                    <TextBlock Text="Website GPS" FontWeight="Bold" Margin="4,12,4,2"/><WrapPanel><StackPanel><TextBlock Text="Username"/><TextBox x:Name="GpsUsername"/></StackPanel><StackPanel><TextBlock Text="Password"/><PasswordBox x:Name="GpsPassword" Width="220" Margin="3" Padding="6"/></StackPanel></WrapPanel>
+                    <TextBlock Text="Website Network" FontWeight="Bold" Margin="4,12,4,2"/><WrapPanel><StackPanel><TextBlock Text="Username"/><TextBox x:Name="NetworkUsername"/></StackPanel><StackPanel><TextBlock Text="Password"/><PasswordBox x:Name="NetworkPassword" Width="220" Margin="3" Padding="6"/></StackPanel></WrapPanel>
+                    <TextBlock Text="Notes"/><TextBox x:Name="ProfileNotes" Height="80" AcceptsReturn="True" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal"><Button Content="Simpan" Click="SaveProfile_Click"/><Button Content="Batal" Click="CancelProfile_Click"/></StackPanel>
+                </StackPanel>
+            </Grid></ScrollViewer></TabItem>
+            <TabItem Header="Schedule"><ScrollViewer><StackPanel Margin="18">
+                <TextBlock Text="Jadwal Otomatis" FontSize="26" FontWeight="SemiBold"/>
+                <WrapPanel><CheckBox x:Name="ClockInEnabled" Content="Auto Datang"/><TextBlock Text="Jam Datang" VerticalAlignment="Center"/><TextBox x:Name="ClockInTime" Text="08:00"/><CheckBox x:Name="ClockOutEnabled" Content="Auto Pulang"/><TextBlock Text="Jam Pulang" VerticalAlignment="Center"/><TextBox x:Name="ClockOutTime" Text="17:00"/></WrapPanel>
+                <TextBlock Text="Hari aktif" FontWeight="Bold" Margin="4,16,4,4"/><WrapPanel>
+                    <CheckBox x:Name="Monday" Content="Senin"/><CheckBox x:Name="Tuesday" Content="Selasa"/><CheckBox x:Name="Wednesday" Content="Rabu"/><CheckBox x:Name="Thursday" Content="Kamis"/><CheckBox x:Name="Friday" Content="Jumat"/><CheckBox x:Name="Saturday" Content="Sabtu"/><CheckBox x:Name="Sunday" Content="Minggu"/>
+                </WrapPanel>
+                <WrapPanel><StackPanel><TextBlock Text="Delay antar profile (detik)"/><TextBox x:Name="ProfileDelay" Text="0"/></StackPanel><CheckBox x:Name="RetryEnabled" Content="Retry Enabled"/><StackPanel><TextBlock Text="Max Retry"/><TextBox x:Name="MaxRetry" Text="3"/></StackPanel><StackPanel><TextBlock Text="Retry Delay (detik)"/><TextBox x:Name="RetryDelay" Text="30"/></StackPanel></WrapPanel>
+                <Button Content="Simpan Jadwal" HorizontalAlignment="Left" Click="SaveSchedule_Click"/>
+            </StackPanel></ScrollViewer></TabItem>
+            <TabItem Header="History"><Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><TextBlock Text="Riwayat Absensi" FontSize="26"/><ListView x:Name="HistoryList" Grid.Row="1" Margin="0,12"/></Grid></TabItem>
+            <TabItem Header="Settings"><ScrollViewer><StackPanel Margin="18">
+                <TextBlock Text="Settings" FontSize="26" FontWeight="SemiBold"/>
+                <Expander Header="General" IsExpanded="True" Margin="4"><WrapPanel><CheckBox x:Name="StartWithWindows" Content="Start with Windows"/><CheckBox x:Name="MinimizeToTray" Content="Minimize to tray"/></WrapPanel></Expander>
+                <Expander Header="Network" IsExpanded="True" Margin="4"><WrapPanel><StackPanel><TextBlock Text="Required SSID"/><TextBox x:Name="RequiredSsid"/></StackPanel><StackPanel><TextBlock Text="IP range (opsional)"/><TextBox x:Name="IpRange"/></StackPanel><StackPanel><TextBlock Text="Gateway (opsional)"/><TextBox x:Name="Gateway"/></StackPanel></WrapPanel></Expander>
+                <Expander Header="Browser" IsExpanded="True" Margin="4"><WrapPanel><StackPanel><TextBlock Text="Edge path"/><TextBox x:Name="EdgePath"/></StackPanel><CheckBox x:Name="BrowserVisible" Content="Browser visible"/><StackPanel><TextBlock Text="Timeout (detik)"/><TextBox x:Name="BrowserTimeout" Text="60"/></StackPanel><CheckBox x:Name="ScreenshotEnabled" Content="Screenshot enabled"/></WrapPanel></Expander>
+                <Expander Header="Telegram" IsExpanded="True" Margin="4"><WrapPanel><CheckBox x:Name="TelegramEnabled" Content="Enabled"/><StackPanel><TextBlock Text="Bot Token"/><PasswordBox x:Name="BotToken" Width="260" Margin="3" Padding="6"/></StackPanel><StackPanel><TextBlock Text="Chat ID"/><TextBox x:Name="ChatId"/></StackPanel><CheckBox x:Name="NotifySuccess" Content="Notify Success" IsChecked="True"/><CheckBox x:Name="NotifyFailure" Content="Notify Failure" IsChecked="True"/><CheckBox x:Name="SendSummary" Content="Send Summary" IsChecked="True"/><CheckBox x:Name="SendScreenshot" Content="Send Screenshot"/><Button Content="Test Telegram" Click="TestTelegram_Click"/></WrapPanel></Expander>
+                <Expander Header="Security" Margin="4"><TextBlock Text="Rahasia Telegram dan password profile disimpan terenkripsi menggunakan DPAPI Windows." TextWrapping="Wrap"/></Expander>
+                <StackPanel Orientation="Horizontal"><Button Content="Simpan Settings" Click="SaveSettings_Click"/><Button Content="Simpan" Click="SaveSettings_Click"/></StackPanel>
+            </StackPanel></ScrollViewer></TabItem>
+            <TabItem Header="Logs"><Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><TextBlock Text="Log Aplikasi" FontSize="26"/><ListView x:Name="LogsList" Grid.Row="1" Margin="0,12"/></Grid></TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

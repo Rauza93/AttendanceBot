@@ -4,3 +4,7 @@ publish/
 *.user
 *.suo
 .vs/
+*.zip
+*.exe
+*-part*
+GABUNGKAN*.txt

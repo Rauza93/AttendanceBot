@@ -3,7 +3,7 @@
   <ItemGroup><ProjectReference Include="../AttendanceBot.Core/AttendanceBot.Core.csproj" /></ItemGroup>
   <ItemGroup>
     <PackageReference Include="Selenium.WebDriver" Version="4.25.0" />
-    <PackageReference Include="Selenium.WebDriver.MSEdgeDriver" Version="129.0.2792.79" />
+    <PackageReference Include="Selenium.WebDriver.MSEdgeDriver" Version="129.0.2792.79" Condition="'$(OS)' == 'Windows_NT'" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,5 @@
 #define MyAppName "AttendanceBot"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppExeName "AttendanceBot.App.exe"
 [Setup]
 AppId={{B4A1B8E1-4F1E-45DE-9B8A-7D3C4C8E2A11}}
@@ -20,8 +20,9 @@ Name: "{autodesktop}\AttendanceBot"; Filename: "{app}\{#MyAppExeName}"; Tasks: d
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 [Dirs]
-Name: "{commonappdata}\AttendanceBot\Logs"
-Name: "{commonappdata}\AttendanceBot\Screenshots"
+Name: "{commonappdata}\AttendanceBot"; Permissions: users-modify
+Name: "{commonappdata}\AttendanceBot\Logs"; Permissions: users-modify
+Name: "{commonappdata}\AttendanceBot\Screenshots"; Permissions: users-modify
 [Run]
 Filename: "schtasks.exe"; Parameters: "/Create /TN ""AttendanceBot Startup"" /TR ""{app}\AttendanceBot.Worker.exe"" /SC ONLOGON /RL LIMITED /F"; Flags: runhidden
 [UninstallDelete]
