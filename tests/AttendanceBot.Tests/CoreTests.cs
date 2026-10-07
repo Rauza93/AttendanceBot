@@ -3,6 +3,7 @@ using AttendanceBot.Core.Models;
 using AttendanceBot.Core.Services;
 using AttendanceBot.Infrastructure.Persistence;
 using AttendanceBot.Infrastructure.Security;
+using AttendanceBot.Automation;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
@@ -13,6 +14,72 @@ namespace AttendanceBot.Tests;
 
 public sealed class CoreTests
 {
+    [Fact] public async Task WebsiteConfiguration_SaveReloadUpdateAndDisable()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"attendancebot-website-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<AttendanceDbContext>().UseSqlite($"Data Source={path}").Options;
+        try
+        {
+            await using (var db = new AttendanceDbContext(options))
+            {
+                await db.Database.EnsureCreatedAsync();
+                db.WebsiteConfigurations.Add(new WebsiteConfiguration { ProviderType = "GPS", Name = "GPS site", Enabled = true, BaseUrl = "https://example.org", LoginUrl = "https://example.org/login", AttendanceUrl = "https://example.org/attendance" });
+                await db.SaveChangesAsync();
+            }
+            await using (var db = new AttendanceDbContext(options))
+            {
+                var item = await db.WebsiteConfigurations.SingleAsync(x => x.ProviderType == "GPS");
+                Assert.Equal("https://example.org/login", item.LoginUrl);
+                item.BaseUrl = "https://updated.example.org"; item.Enabled = false;
+                await db.SaveChangesAsync();
+            }
+            await using var verify = new AttendanceDbContext(options);
+            var updated = await verify.WebsiteConfigurations.SingleAsync();
+            Assert.Equal("https://updated.example.org", updated.BaseUrl);
+            Assert.False(updated.Enabled);
+        }
+        finally { SqliteConnection.ClearAllPools(); if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("ftp://example.org")]
+    [InlineData("invalid url")]
+    public void WebsiteConfiguration_RejectsInvalidUrls(string url)
+    {
+        var item = new WebsiteConfiguration { Name = "Test", Enabled = true, BaseUrl = url, LoginUrl = url, AttendanceUrl = "https://example.org/attendance" };
+        Assert.NotNull(WebsiteConfigurationValidator.Validate(item));
+    }
+
+    [Fact] public async Task GpsProvider_ReadsDatabaseUrlAndMissingConfigRequiresManual()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"attendancebot-provider-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<AttendanceDbContext>().UseSqlite($"Data Source={path}").Options;
+        var factory = new TestDbFactory(options);
+        try
+        {
+            await using (var db = new AttendanceDbContext(options))
+            {
+                await db.Database.EnsureCreatedAsync();
+                var provider = new GpsAttendanceProvider(new ProviderOptions(), factory);
+                var missing = await provider.CheckPrerequisitesAsync(new ProviderContext(new AttendanceProfile(), AttendanceType.ClockIn, true, TimeSpan.FromSeconds(3)), CancellationToken.None);
+                Assert.Equal(RunStatus.ManualRequired, missing.Status);
+                Assert.Equal("Website GPS belum dikonfigurasi", missing.Message);
+                db.WebsiteConfigurations.Add(new WebsiteConfiguration { ProviderType = "GPS", Name = "GPS", Enabled = true, BaseUrl = "https://site.test", LoginUrl = "https://site.test/auth", AttendanceUrl = "https://site.test/in" });
+                await db.SaveChangesAsync();
+                var configured = await provider.CheckPrerequisitesAsync(new ProviderContext(new AttendanceProfile(), AttendanceType.ClockIn, true, TimeSpan.FromSeconds(3)), CancellationToken.None);
+                Assert.Equal(RunStatus.Pending, configured.Status);
+            }
+        }
+        finally { SqliteConnection.ClearAllPools(); if (File.Exists(path)) File.Delete(path); }
+    }
+
+    private sealed class TestDbFactory(DbContextOptions<AttendanceDbContext> options) : IDbContextFactory<AttendanceDbContext>
+    {
+        public AttendanceDbContext CreateDbContext() => new(options);
+        public Task<AttendanceDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) => Task.FromResult(CreateDbContext());
+    }
     [Fact] public void Scheduler_UsesConfiguredTimeAndDays()
     {
         var now = new DateTimeOffset(2026, 10, 5, 6, 0, 0, TimeSpan.FromHours(7));

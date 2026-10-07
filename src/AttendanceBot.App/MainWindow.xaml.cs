@@ -4,10 +4,12 @@ using AttendanceBot.Core.Services;
 using AttendanceBot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using Button = System.Windows.Controls.Button;
 using CheckBox = System.Windows.Controls.CheckBox;
+using TextBox = System.Windows.Controls.TextBox;
 using MessageBox = System.Windows.MessageBox;
 using Mouse = System.Windows.Input.Mouse;
 
@@ -94,6 +96,57 @@ public partial class MainWindow : Window
         SendSummary.IsChecked = telegram?.SendSummary ?? true;
         SendScreenshot.IsChecked = telegram?.SendScreenshot ?? false;
         BotToken.Password = _secrets.Unprotect(telegram?.BotTokenSecret, "telegram-bot-token") ?? "";
+        await LoadWebsiteAsync("GPS", GpsWebsiteName, GpsWebsiteEnabled, GpsBaseUrl, GpsLoginUrl, GpsAttendanceUrl, GpsWebsiteNotes);
+        await LoadWebsiteAsync("NETWORK", NetworkWebsiteName, NetworkWebsiteEnabled, NetworkBaseUrl, NetworkLoginUrl, NetworkAttendanceUrl, NetworkWebsiteNotes);
+    }
+
+    private async Task LoadWebsiteAsync(string provider, TextBox name, CheckBox enabled, TextBox baseUrl, TextBox loginUrl, TextBox attendanceUrl, TextBox notes)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var configuration = await db.WebsiteConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.ProviderType == provider);
+        name.Text = configuration?.Name ?? ""; enabled.IsChecked = configuration?.Enabled ?? false;
+        baseUrl.Text = configuration?.BaseUrl ?? ""; loginUrl.Text = configuration?.LoginUrl ?? "";
+        attendanceUrl.Text = configuration?.AttendanceUrl ?? ""; notes.Text = configuration?.Notes ?? "";
+    }
+
+    private async void SaveGpsWebsite_Click(object sender, RoutedEventArgs e) => await SaveWebsiteAsync("GPS", GpsWebsiteName, GpsWebsiteEnabled, GpsBaseUrl, GpsLoginUrl, GpsAttendanceUrl, GpsWebsiteNotes);
+    private async void SaveNetworkWebsite_Click(object sender, RoutedEventArgs e) => await SaveWebsiteAsync("NETWORK", NetworkWebsiteName, NetworkWebsiteEnabled, NetworkBaseUrl, NetworkLoginUrl, NetworkAttendanceUrl, NetworkWebsiteNotes);
+
+    private async Task SaveWebsiteAsync(string provider, TextBox name, CheckBox enabled, TextBox baseUrl, TextBox loginUrl, TextBox attendanceUrl, TextBox notes)
+    {
+        var configuration = new WebsiteConfiguration { ProviderType = provider, Name = name.Text.Trim(), Enabled = enabled.IsChecked == true,
+            BaseUrl = baseUrl.Text.Trim(), LoginUrl = loginUrl.Text.Trim(), AttendanceUrl = attendanceUrl.Text.Trim(), Notes = NullIfEmpty(notes.Text) };
+        var error = WebsiteConfigurationValidator.Validate(configuration);
+        if (error is not null) { MessageBox.Show(error, "Validasi", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        await RunSaveAsync(async () =>
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var stored = await db.WebsiteConfigurations.SingleOrDefaultAsync(x => x.ProviderType == provider);
+            if (stored is null) { configuration.CreatedAt = DateTime.UtcNow; db.WebsiteConfigurations.Add(configuration); stored = configuration; }
+            else { stored.Name = configuration.Name; stored.Enabled = configuration.Enabled; stored.BaseUrl = configuration.BaseUrl; stored.LoginUrl = configuration.LoginUrl; stored.AttendanceUrl = configuration.AttendanceUrl; stored.Notes = configuration.Notes; }
+            stored.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            StatusText.Text = $"Konfigurasi website {provider} disimpan.";
+        });
+    }
+
+    private async void TestGpsWebsite_Click(object sender, RoutedEventArgs e) => await TestWebsiteAsync("GPS", GpsWebsiteName.Text, GpsWebsiteEnabled.IsChecked == true, GpsBaseUrl.Text, GpsLoginUrl.Text, GpsAttendanceUrl.Text, GpsWebsiteStatus);
+    private async void TestNetworkWebsite_Click(object sender, RoutedEventArgs e) => await TestWebsiteAsync("NETWORK", NetworkWebsiteName.Text, NetworkWebsiteEnabled.IsChecked == true, NetworkBaseUrl.Text, NetworkLoginUrl.Text, NetworkAttendanceUrl.Text, NetworkWebsiteStatus);
+
+    private static async Task TestWebsiteAsync(string provider, string name, bool enabled, string baseUrl, string loginUrl, string attendanceUrl, TextBlock status)
+    {
+        var configuration = new WebsiteConfiguration { ProviderType = provider, Name = name, Enabled = enabled, BaseUrl = baseUrl.Trim(), LoginUrl = loginUrl.Trim(), AttendanceUrl = attendanceUrl.Trim() };
+        var error = WebsiteConfigurationValidator.Validate(configuration);
+        if (error is not null) { status.Text = $"❌ {error}"; return; }
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            using var response = await client.GetAsync(configuration.BaseUrl, HttpCompletionOption.ResponseHeadersRead);
+            status.Text = "✅ Website dapat diakses";
+        }
+        catch (OperationCanceledException) { status.Text = "❌ Website tidak dapat diakses: timeout"; }
+        catch (HttpRequestException ex) { status.Text = $"❌ Website tidak dapat diakses: {ex.Message}"; }
+        catch (Exception ex) { status.Text = $"❌ Website tidak dapat diakses: {ex.Message}"; }
     }
 
     private async Task LoadHistoryAsync()

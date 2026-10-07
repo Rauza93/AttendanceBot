@@ -6,5 +6,6 @@ publish/
 .vs/
 *.zip
 *.exe
+artifacts/
 *-part*
 GABUNGKAN*.txt

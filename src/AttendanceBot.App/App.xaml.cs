@@ -41,7 +41,10 @@ public partial class App : System.Windows.Application
             await _host.StartAsync();
             var factory = _host.Services.GetRequiredService<IDbContextFactory<AttendanceDbContext>>();
             await using (var db = await factory.CreateDbContextAsync())
+            {
                 await db.Database.EnsureCreatedAsync();
+                await db.Database.MigrateAsync();
+            }
 
             _host.Services.GetRequiredService<MainWindow>().Show();
         }

@@ -1,7 +1,7 @@
 <Window x:Class="AttendanceBot.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AttendanceBot" Width="1120" Height="760" MinWidth="900" MinHeight="620"
+        Title="AttendanceBot v1.0.2" Width="1120" Height="760" MinWidth="900" MinHeight="620"
         Background="#101827" Foreground="#EAF1F7">
     <Window.Resources>
         <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#EAF1F7"/><Setter Property="Margin" Value="3"/></Style>
@@ -14,7 +14,7 @@
     </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#182638" Padding="12">
-            <DockPanel><TextBlock Text="AttendanceBot" FontSize="22" FontWeight="Bold" Foreground="#80D8FF"/><TextBlock x:Name="StatusText" DockPanel.Dock="Right" HorizontalAlignment="Right" Text="Siap" VerticalAlignment="Center"/></DockPanel>
+            <DockPanel><TextBlock Text="AttendanceBot v1.0.2" FontSize="22" FontWeight="Bold" Foreground="#80D8FF"/><TextBlock x:Name="StatusText" DockPanel.Dock="Right" HorizontalAlignment="Right" Text="Siap" VerticalAlignment="Center"/></DockPanel>
         </Border>
         <TabControl x:Name="Pages" SelectionChanged="Pages_SelectionChanged" Background="#101827" BorderThickness="0" Margin="12">
             <TabItem Header="Dashboard"><ScrollViewer><StackPanel Margin="18">
@@ -51,6 +51,20 @@
             <TabItem Header="Settings"><ScrollViewer><StackPanel Margin="18">
                 <TextBlock Text="Settings" FontSize="26" FontWeight="SemiBold"/>
                 <Expander Header="General" IsExpanded="True" Margin="4"><WrapPanel><CheckBox x:Name="StartWithWindows" Content="Start with Windows"/><CheckBox x:Name="MinimizeToTray" Content="Minimize to tray"/></WrapPanel></Expander>
+                <Expander Header="Websites" IsExpanded="True" Margin="4"><StackPanel>
+                    <Border BorderBrush="#40536A" BorderThickness="1" CornerRadius="6" Padding="10" Margin="4"><StackPanel>
+                        <TextBlock Text="Website GPS" FontSize="18" FontWeight="Bold"/><CheckBox x:Name="GpsWebsiteEnabled" Content="Enabled"/>
+                        <WrapPanel><StackPanel><TextBlock Text="Name"/><TextBox x:Name="GpsWebsiteName"/></StackPanel><StackPanel><TextBlock Text="Base URL"/><TextBox x:Name="GpsBaseUrl"/></StackPanel></WrapPanel>
+                        <WrapPanel><StackPanel><TextBlock Text="Login URL"/><TextBox x:Name="GpsLoginUrl"/></StackPanel><StackPanel><TextBlock Text="Attendance URL"/><TextBox x:Name="GpsAttendanceUrl"/></StackPanel></WrapPanel>
+                        <TextBlock Text="Notes"/><TextBox x:Name="GpsWebsiteNotes"/><WrapPanel><Button Content="Test Website" Click="TestGpsWebsite_Click"/><Button Content="Save" Click="SaveGpsWebsite_Click"/><TextBlock x:Name="GpsWebsiteStatus" VerticalAlignment="Center"/></WrapPanel>
+                    </StackPanel></Border>
+                    <Border BorderBrush="#40536A" BorderThickness="1" CornerRadius="6" Padding="10" Margin="4"><StackPanel>
+                        <TextBlock Text="Website Jaringan" FontSize="18" FontWeight="Bold"/><CheckBox x:Name="NetworkWebsiteEnabled" Content="Enabled"/>
+                        <WrapPanel><StackPanel><TextBlock Text="Name"/><TextBox x:Name="NetworkWebsiteName"/></StackPanel><StackPanel><TextBlock Text="Base URL"/><TextBox x:Name="NetworkBaseUrl"/></StackPanel></WrapPanel>
+                        <WrapPanel><StackPanel><TextBlock Text="Login URL"/><TextBox x:Name="NetworkLoginUrl"/></StackPanel><StackPanel><TextBlock Text="Attendance URL"/><TextBox x:Name="NetworkAttendanceUrl"/></StackPanel></WrapPanel>
+                        <TextBlock Text="Notes"/><TextBox x:Name="NetworkWebsiteNotes"/><WrapPanel><Button Content="Test Website" Click="TestNetworkWebsite_Click"/><Button Content="Save" Click="SaveNetworkWebsite_Click"/><TextBlock x:Name="NetworkWebsiteStatus" VerticalAlignment="Center"/></WrapPanel>
+                    </StackPanel></Border>
+                </StackPanel></Expander>
                 <Expander Header="Network" IsExpanded="True" Margin="4"><WrapPanel><StackPanel><TextBlock Text="Required SSID"/><TextBox x:Name="RequiredSsid"/></StackPanel><StackPanel><TextBlock Text="IP range (opsional)"/><TextBox x:Name="IpRange"/></StackPanel><StackPanel><TextBlock Text="Gateway (opsional)"/><TextBox x:Name="Gateway"/></StackPanel></WrapPanel></Expander>
                 <Expander Header="Browser" IsExpanded="True" Margin="4"><WrapPanel><StackPanel><TextBlock Text="Edge path"/><TextBox x:Name="EdgePath"/></StackPanel><CheckBox x:Name="BrowserVisible" Content="Browser visible"/><StackPanel><TextBlock Text="Timeout (detik)"/><TextBox x:Name="BrowserTimeout" Text="60"/></StackPanel><CheckBox x:Name="ScreenshotEnabled" Content="Screenshot enabled"/></WrapPanel></Expander>
                 <Expander Header="Telegram" IsExpanded="True" Margin="4"><WrapPanel><CheckBox x:Name="TelegramEnabled" Content="Enabled"/><StackPanel><TextBlock Text="Bot Token"/><PasswordBox x:Name="BotToken" Width="260" Margin="3" Padding="6"/></StackPanel><StackPanel><TextBlock Text="Chat ID"/><TextBox x:Name="ChatId"/></StackPanel><CheckBox x:Name="NotifySuccess" Content="Notify Success" IsChecked="True"/><CheckBox x:Name="NotifyFailure" Content="Notify Failure" IsChecked="True"/><CheckBox x:Name="SendSummary" Content="Send Summary" IsChecked="True"/><CheckBox x:Name="SendScreenshot" Content="Send Screenshot"/><Button Content="Test Telegram" Click="TestTelegram_Click"/></WrapPanel></Expander>

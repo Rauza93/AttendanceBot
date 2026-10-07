@@ -10,7 +10,7 @@ public abstract class ConfiguredProviderBase : IAttendanceProvider
     protected ProviderOptions Options { get; }
     public abstract ProviderKind Kind { get; }
     protected abstract bool PrerequisitesAvailable(ProviderContext context, out string message);
-    public Task<ProviderResult> CheckPrerequisitesAsync(ProviderContext c, CancellationToken ct) => Task.FromResult(PrerequisitesAvailable(c, out var m) ? new ProviderResult(RunStatus.Pending, m) : new ProviderResult(RunStatus.Blocked, m, "PREREQUISITES"));
+    public Task<ProviderResult> CheckPrerequisitesAsync(ProviderContext c, CancellationToken ct) => Task.FromResult(PrerequisitesAvailable(c, out var m) ? new ProviderResult(RunStatus.Pending, m) : m is "Website GPS belum dikonfigurasi" or "Website Jaringan belum dikonfigurasi" ? new ProviderResult(RunStatus.ManualRequired, m, "CONFIGURATION_REQUIRED", null, true) : new ProviderResult(RunStatus.Blocked, m, "PREREQUISITES"));
     public Task<ProviderResult> LoginAsync(ProviderContext c, CancellationToken ct) => ExecuteAsync(c, ct, d =>
     {
         if (string.IsNullOrWhiteSpace(Options.LoginUrl) || string.IsNullOrWhiteSpace(Options.LoginUsernameSelector) || string.IsNullOrWhiteSpace(Options.LoginPasswordSelector))

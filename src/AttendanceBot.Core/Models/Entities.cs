@@ -18,6 +18,20 @@ public sealed class AttendanceProfile
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
+public sealed class WebsiteConfiguration
+{
+    public int Id { get; set; }
+    public string ProviderType { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool Enabled { get; set; }
+    public string BaseUrl { get; set; } = "";
+    public string LoginUrl { get; set; } = "";
+    public string AttendanceUrl { get; set; } = "";
+    public string? Notes { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public sealed class Schedule
 {
     public int Id { get; set; }
