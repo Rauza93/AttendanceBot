@@ -1,7 +1,7 @@
 <Window x:Class="AttendanceBot.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AttendanceBot v1.0.2" Width="1120" Height="760" MinWidth="900" MinHeight="620"
+        Title="AttendanceBot v1.0.3" Width="1120" Height="760" MinWidth="900" MinHeight="620"
         Background="#101827" Foreground="#EAF1F7" Closing="Window_Closing">
     <Window.Resources>
         <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#EAF1F7"/><Setter Property="Margin" Value="3"/></Style>
@@ -14,7 +14,7 @@
     </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#182638" Padding="12">
-            <DockPanel><TextBlock Text="AttendanceBot v1.0.2" FontSize="22" FontWeight="Bold" Foreground="#80D8FF"/><TextBlock x:Name="StatusText" DockPanel.Dock="Right" HorizontalAlignment="Right" Text="Siap" VerticalAlignment="Center"/></DockPanel>
+            <DockPanel><TextBlock Text="AttendanceBot v1.0.3" FontSize="22" FontWeight="Bold" Foreground="#80D8FF"/><TextBlock x:Name="StatusText" DockPanel.Dock="Right" HorizontalAlignment="Right" Text="Siap" VerticalAlignment="Center"/></DockPanel>
         </Border>
         <TabControl x:Name="Pages" SelectionChanged="Pages_SelectionChanged" Background="#101827" BorderThickness="0" Margin="12">
             <TabItem Header="Dashboard"><ScrollViewer><StackPanel Margin="18">

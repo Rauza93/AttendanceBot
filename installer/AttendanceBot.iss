@@ -1,5 +1,5 @@
 #define MyAppName "AttendanceBot"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppExeName "AttendanceBot.App.exe"
 [Setup]
 AppId={{B4A1B8E1-4F1E-45DE-9B8A-7D3C4C8E2A11}}
