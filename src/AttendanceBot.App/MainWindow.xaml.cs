@@ -2,6 +2,7 @@ using AttendanceBot.Core.Interfaces;
 using AttendanceBot.Core.Models;
 using AttendanceBot.Core.Services;
 using AttendanceBot.Infrastructure.Persistence;
+using AttendanceBot.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using System.Net.Http;
@@ -12,6 +13,7 @@ using CheckBox = System.Windows.Controls.CheckBox;
 using TextBox = System.Windows.Controls.TextBox;
 using MessageBox = System.Windows.MessageBox;
 using Mouse = System.Windows.Input.Mouse;
+using Forms = System.Windows.Forms;
 
 namespace AttendanceBot.App;
 
@@ -20,16 +22,49 @@ public partial class MainWindow : Window
     private readonly IDbContextFactory<AttendanceDbContext> _dbFactory;
     private readonly ISecretStore _secrets;
     private readonly ITelegramService _telegram;
+    private readonly AutomationRuntimeService _automation;
+    private readonly AttendanceAutomationService _automationService;
     private int? _editingProfileId;
     private bool _loading;
+    private readonly Forms.NotifyIcon _tray = new() { Text = "AttendanceBot", Icon = System.Drawing.SystemIcons.Application, Visible = true };
+    private readonly Forms.ToolStripMenuItem _trayStatus = new("Status: STOPPED") { Enabled = false };
+    private bool _exitRequested;
 
-    public MainWindow(IDbContextFactory<AttendanceDbContext> dbFactory, ISecretStore secrets, ITelegramService telegram)
+    public MainWindow(IDbContextFactory<AttendanceDbContext> dbFactory, ISecretStore secrets, ITelegramService telegram, AutomationRuntimeService automation, AttendanceAutomationService automationService)
     {
         _dbFactory = dbFactory;
         _secrets = secrets;
         _telegram = telegram;
+        _automation = automation;
+        _automationService = automationService;
         InitializeComponent();
+        var menu = new Forms.ContextMenuStrip();
+        menu.Items.Add("Open AttendanceBot", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
+        menu.Items.Add(_trayStatus);
+        menu.Items.Add("Start Automation", null, async (_, _) => await Dispatcher.InvokeAsync(async () => await StartAutomationFromTrayAsync()));
+        menu.Items.Add("Stop Automation", null, async (_, _) => await Dispatcher.InvokeAsync(async () => await _automationService.StopAsync()));
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitFromTray));
+        _tray.ContextMenuStrip = menu;
+        _tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+        _automation.StateChanged += (_, snapshot) => Dispatcher.Invoke(() => { UpdateAutomationUi(snapshot); _trayStatus.Text = $"Status: {snapshot.State.ToString().ToUpperInvariant()}"; });
         Loaded += async (_, _) => await ReloadAllAsync();
+    }
+
+    private void ShowFromTray() { Show(); WindowState = WindowState.Normal; Activate(); }
+    private async Task StartAutomationFromTrayAsync() { try { await _automationService.StartAsync(); } catch (Exception ex) { _automation.SetError(ex.GetBaseException().Message); } }
+    private async void ExitFromTray() { await _automationService.StopAsync(); _exitRequested = true; _tray.Visible = false; _tray.Dispose(); System.Windows.Application.Current.Shutdown(); }
+    private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_exitRequested) return;
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var minimize = await db.ApplicationSettings.AsNoTracking().Where(x => x.Key == "General.MinimizeToTray").Select(x => x.Value).FirstOrDefaultAsync();
+            if (minimize == "true") { e.Cancel = true; Hide(); _tray.BalloonTipTitle = "AttendanceBot"; _tray.BalloonTipText = $"Automation tetap berjalan: {_automation.Snapshot.State}"; _tray.ShowBalloonTip(1500); }
+            else { _tray.Visible = false; _tray.Dispose(); }
+        }
+        catch { _tray.Visible = false; _tray.Dispose(); }
     }
 
     private async Task ReloadAllAsync()
@@ -80,6 +115,7 @@ public partial class MainWindow : Window
         await using var db = await _dbFactory.CreateDbContextAsync();
         var values = await ReadSettingsAsync(db);
         StartWithWindows.IsChecked = Get(values, "General.StartWithWindows", "false") == "true";
+        AutoStartAutomation.IsChecked = Get(values, "General.AutoStartAutomation", "false") == "true";
         MinimizeToTray.IsChecked = Get(values, "General.MinimizeToTray", "false") == "true";
         RequiredSsid.Text = Get(values, "Network.RequiredSsid", "");
         IpRange.Text = Get(values, "Network.IpRange", "");
@@ -163,6 +199,80 @@ public partial class MainWindow : Window
         NoScheduleText.Visibility = await db.Schedules.AnyAsync(s => s.Enabled) ? Visibility.Collapsed : Visibility.Visible;
         var results = await db.AttendanceResults.AsNoTracking().OrderByDescending(r => r.StartedAt).Take(20).ToListAsync();
         DashboardResults.ItemsSource = results.Select(r => $"{r.StartedAt:yyyy-MM-dd HH:mm:ss} | Profile #{r.ProfileId} | {r.Provider} | {r.AttendanceType} | {r.Status} | {r.ResultMessage ?? r.ErrorMessage}").ToList();
+        var upcoming = await _automationService.GetNextScheduleAsync();
+        NextActionText.Text = upcoming.Type?.ToString() switch { "ClockIn" => "Absen Datang", "ClockOut" => "Absen Pulang", _ => "Tidak ada jadwal aktif" };
+        UpdateAutomationUi(_automation.Snapshot, upcoming.At);
+        var lastRun = await db.AttendanceRuns.AsNoTracking().OrderByDescending(r => r.StartedAt).FirstOrDefaultAsync();
+        if (lastRun is null) LastRunText.Text = "-";
+        else
+        {
+            var outcomes = await db.AttendanceResults.AsNoTracking().Where(x => x.AttendanceRunId == lastRun.Id).GroupBy(x => x.Status).Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync();
+            var summary = string.Join(", ", outcomes.Select(x => $"{x.Count} {x.Status}"));
+            LastRunText.Text = $"{lastRun.StartedAt:HH:mm} — {lastRun.AttendanceType} — {lastRun.Status}" + (summary.Length == 0 ? "" : $" ({summary})");
+        }
+    }
+
+    private void UpdateAutomationUi(AutomationSnapshot snapshot, DateTimeOffset? next = null)
+    {
+        var state = snapshot.State;
+        var (icon, color) = state switch
+        {
+            AutomationState.Running => ("🟢", "#65D98A"),
+            AutomationState.Processing => ("🔵", "#80D8FF"),
+            AutomationState.Paused => ("⏸", "#80D8FF"),
+            AutomationState.Error => ("⚠", "#FF6B6B"),
+            _ => ("🔴", "#FF6B6B")
+        };
+        AutomationStatusText.Text = $"{icon} {state.ToString().ToUpperInvariant()}" + (snapshot.Error is null ? "" : $" — {snapshot.Error}");
+        AutomationStatusText.Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(color)!;
+        AutomationModeText.Text = snapshot.Mode;
+        if (snapshot.Action is not null) NextActionText.Text = snapshot.Action == AttendanceType.ClockIn ? "Absen Datang" : "Absen Pulang";
+        NextScheduleText.Text = (next ?? snapshot.NextSchedule)?.ToLocalTime().ToString("HH:mm") ?? "-";
+        QueueText.Text = $"{snapshot.QueueRemaining} waiting";
+        CurrentProfileText.Text = snapshot.Profile ?? "-";
+        CurrentProviderText.Text = snapshot.Provider ?? "-";
+        CurrentStartedAtText.Text = snapshot.StartedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-";
+        var stopped = state == AutomationState.Stopped;
+        StartAutomationButton.IsEnabled = stopped || state == AutomationState.Error;
+        StopAutomationButton.IsEnabled = !stopped;
+        PauseAutomationButton.IsEnabled = state == AutomationState.Running;
+        ResumeAutomationButton.IsEnabled = state == AutomationState.Paused;
+    }
+
+    private async void StartAutomation_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            await db.Database.CanConnectAsync();
+            await _automationService.StartAsync();
+            StatusText.Text = "Automation aktif dan menunggu jadwal berikutnya.";
+            MessageBox.Show("Automation aktif dan menunggu jadwal berikutnya.", "AttendanceBot", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { _automation.SetError(ex.GetBaseException().Message); StatusText.Text = $"Automation gagal dijalankan: {ex.GetBaseException().Message}"; MessageBox.Show(StatusText.Text, "AttendanceBot", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
+
+    private async void StopAutomation_Click(object sender, RoutedEventArgs e)
+    {
+        await _automationService.StopAsync(); StatusText.Text = "Automation dihentikan."; await LoadDashboardAsync();
+    }
+    private async void PauseAutomation_Click(object sender, RoutedEventArgs e) { await _automationService.PauseAsync(); }
+    private async void ResumeAutomation_Click(object sender, RoutedEventArgs e) { await _automationService.ResumeAsync(); }
+    private async void RunNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (AutomationStatusText.Text.Contains("PROCESSING", StringComparison.Ordinal)) { MessageBox.Show("Queue sedang berjalan", "AttendanceBot", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+        var choice = MessageBox.Show("Ya: Absen Datang\nTidak: Absen Pulang", "Pilih jenis absensi", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (choice == MessageBoxResult.Cancel) return;
+        try { await _automationService.RunManualAsync(choice == MessageBoxResult.Yes ? AttendanceType.ClockIn : AttendanceType.ClockOut); await LoadDashboardAsync(); }
+        catch (InvalidOperationException ex) when (ex.Message == "Queue sedang berjalan") { MessageBox.Show("Queue sedang berjalan", "AttendanceBot", MessageBoxButton.OK, MessageBoxImage.Information); }
+    }
+
+    private async Task WriteAutomationAuditAsync(string action, string message)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        db.AuditLogs.Add(new AuditLog { Timestamp = DateTime.UtcNow, Category = "Automation", Action = action, Message = message });
+        await db.SaveChangesAsync();
+        await LoadLogsAsync();
     }
 
     private async Task LoadLogsAsync()
@@ -289,12 +399,13 @@ public partial class MainWindow : Window
             await using var db = await _dbFactory.CreateDbContextAsync();
             var values = new Dictionary<string, string>
             {
-                ["General.StartWithWindows"] = Bool(StartWithWindows), ["General.MinimizeToTray"] = Bool(MinimizeToTray),
+                ["General.StartWithWindows"] = Bool(StartWithWindows), ["General.AutoStartAutomation"] = Bool(AutoStartAutomation), ["General.MinimizeToTray"] = Bool(MinimizeToTray),
                 ["Network.RequiredSsid"] = RequiredSsid.Text.Trim(), ["Network.IpRange"] = IpRange.Text.Trim(), ["Network.Gateway"] = Gateway.Text.Trim(),
                 ["Browser.EdgePath"] = EdgePath.Text.Trim(), ["Browser.Visible"] = Bool(BrowserVisible),
                 ["Browser.TimeoutSeconds"] = timeout.ToString(CultureInfo.InvariantCulture), ["Browser.ScreenshotEnabled"] = Bool(ScreenshotEnabled)
             };
             await SaveSettingsValuesAsync(db, values);
+            App.ConfigureWindowsStartup(StartWithWindows.IsChecked == true);
             var telegram = await db.TelegramSettings.OrderBy(t => t.Id).FirstOrDefaultAsync();
             if (telegram is null) { telegram = new TelegramSetting(); db.TelegramSettings.Add(telegram); }
             telegram.Enabled = TelegramEnabled.IsChecked == true; telegram.ChatId = NullIfEmpty(ChatId.Text);

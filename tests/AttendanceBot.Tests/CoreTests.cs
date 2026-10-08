@@ -4,6 +4,7 @@ using AttendanceBot.Core.Services;
 using AttendanceBot.Infrastructure.Persistence;
 using AttendanceBot.Infrastructure.Security;
 using AttendanceBot.Automation;
+using AttendanceBot.Infrastructure.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
@@ -85,6 +86,118 @@ public sealed class CoreTests
         var now = new DateTimeOffset(2026, 10, 5, 6, 0, 0, TimeSpan.FromHours(7));
         var next = new SchedulerService().GetNextOccurrence([new Schedule { Enabled = true, LocalTime = new TimeOnly(7, 0), ActiveDays = DayOfWeekFlags.Monday }], now);
         Assert.Equal(7, next?.Hour);
+    }
+
+    [Fact] public void AutomationRuntime_StartIsIdempotentAndSupportsPauseResumeStop()
+    {
+        var runtime = new AutomationRuntimeService();
+        Assert.Equal(AutomationState.Stopped, runtime.Snapshot.State);
+        Assert.True(runtime.Start());
+        Assert.Equal(AutomationState.Running, runtime.Snapshot.State);
+        Assert.False(runtime.Start());
+        Assert.True(runtime.Pause());
+        Assert.Equal(AutomationState.Paused, runtime.Snapshot.State);
+        Assert.True(runtime.Resume());
+        Assert.Equal(AutomationState.Running, runtime.Snapshot.State);
+        var cancellation = runtime.RunToken;
+        Assert.True(runtime.Stop());
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.Equal(AutomationState.Stopped, runtime.Snapshot.State);
+        Assert.False(runtime.Stop());
+    }
+
+    [Fact] public void AutomationRuntime_ProcessingStateCarriesCurrentWork()
+    {
+        var runtime = new AutomationRuntimeService();
+        runtime.Start();
+        runtime.SetProcessing("Ahmad", "Website GPS", AttendanceType.ClockIn, 3);
+        Assert.Equal(AutomationState.Processing, runtime.Snapshot.State);
+        Assert.Equal("Ahmad", runtime.Snapshot.Profile);
+        Assert.Equal("Website GPS", runtime.Snapshot.Provider);
+        Assert.Equal(3, runtime.Snapshot.QueueRemaining);
+    }
+
+    [Fact] public async Task AutomationService_ManualQueueRunsSequentiallyAndPersistsLastRun()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"attendancebot-runtime-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<AttendanceDbContext>().UseSqlite($"Data Source={path}").Options;
+        var factory = new TestDbFactory(options);
+        var order = new List<string>();
+        try
+        {
+            await using (var db = new AttendanceDbContext(options))
+            {
+                await db.Database.EnsureCreatedAsync();
+                db.AttendanceProfiles.AddRange(new AttendanceProfile { Name = "Later", QueueOrder = 5, Website1Enabled = true, Website2Enabled = true }, new AttendanceProfile { Name = "First", QueueOrder = 1, Website1Enabled = true, Website2Enabled = true });
+                await db.SaveChangesAsync();
+            }
+            var runtime = new AutomationRuntimeService();
+            var service = new AttendanceAutomationService(factory, [new RuntimeFakeProvider(ProviderKind.Gps, order), new RuntimeFakeProvider(ProviderKind.Network, order)], runtime, new RuntimeFakeTelegram());
+            await service.RunManualAsync(AttendanceType.ClockIn);
+            Assert.Equal(["First-Gps", "First-Network", "Later-Gps", "Later-Network"], order);
+            Assert.Equal(AutomationState.Stopped, runtime.Snapshot.State);
+            await using var verify = new AttendanceDbContext(options);
+            var last = await verify.AttendanceRuns.OrderByDescending(x => x.Id).FirstAsync();
+            Assert.Equal(RunStatus.Success, last.Status);
+            Assert.Equal(4, await verify.AttendanceResults.CountAsync());
+        }
+        finally { SqliteConnection.ClearAllPools(); if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact] public async Task AutomationService_StartSchedulesClockInRunAndDuplicateStartIsIdempotent()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"attendancebot-scheduled-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<AttendanceDbContext>().UseSqlite($"Data Source={path}").Options;
+        try
+        {
+            await using (var db = new AttendanceDbContext(options))
+            {
+                await db.Database.EnsureCreatedAsync();
+                var at = DateTime.Now.AddSeconds(3);
+                db.Schedules.Add(new Schedule { AttendanceType = AttendanceType.ClockIn, Enabled = true, LocalTime = TimeOnly.FromDateTime(at), ActiveDays = at.DayOfWeek switch { DayOfWeek.Monday => DayOfWeekFlags.Monday, DayOfWeek.Tuesday => DayOfWeekFlags.Tuesday, DayOfWeek.Wednesday => DayOfWeekFlags.Wednesday, DayOfWeek.Thursday => DayOfWeekFlags.Thursday, DayOfWeek.Friday => DayOfWeekFlags.Friday, DayOfWeek.Saturday => DayOfWeekFlags.Saturday, _ => DayOfWeekFlags.Sunday } });
+                db.AttendanceProfiles.Add(new AttendanceProfile { Name = "Scheduled", Website1Enabled = true, Website2Enabled = false });
+                await db.SaveChangesAsync();
+            }
+            var factory = new TestDbFactory(options);
+            var provider = new RuntimeFakeProvider(ProviderKind.Gps, []);
+            var service = new AttendanceAutomationService(factory, [provider], new AutomationRuntimeService(), new RuntimeFakeTelegram());
+            await service.StartAsync();
+            await service.StartAsync();
+            var deadline = DateTime.UtcNow.AddSeconds(12);
+            long runId = 0;
+            while (DateTime.UtcNow < deadline)
+            {
+                await using var poll = new AttendanceDbContext(options);
+                runId = await poll.AttendanceRuns.Select(x => x.Id).FirstOrDefaultAsync();
+                if (runId != 0) break;
+                await Task.Delay(200);
+            }
+            Assert.NotEqual(0, runId);
+            await service.StopAsync();
+            await using var verify = new AttendanceDbContext(options);
+            Assert.Equal(AttendanceType.ClockIn, (await verify.AttendanceRuns.SingleAsync()).AttendanceType);
+            Assert.Single(await verify.AttendanceResults.ToListAsync());
+        }
+        finally { SqliteConnection.ClearAllPools(); if (File.Exists(path)) File.Delete(path); }
+    }
+
+    private sealed class RuntimeFakeProvider(ProviderKind kind, List<string> order) : IAttendanceProvider
+    {
+        public ProviderKind Kind => kind;
+        public Task<ProviderResult> CheckPrerequisitesAsync(ProviderContext c, CancellationToken ct) => Task.FromResult(new ProviderResult(RunStatus.Pending, "ok"));
+        public Task<ProviderResult> LoginAsync(ProviderContext c, CancellationToken ct) => Task.FromResult(new ProviderResult(RunStatus.Pending, "ok"));
+        public Task<ProviderResult> CheckAttendanceStatusAsync(ProviderContext c, CancellationToken ct) => Task.FromResult(new ProviderResult(RunStatus.Pending, "ok"));
+        public Task<ProviderResult> ClockInAsync(ProviderContext c, CancellationToken ct) { order.Add($"{c.Profile.Name}-{kind}"); return Task.FromResult(new ProviderResult(RunStatus.Success, "ok")); }
+        public Task<ProviderResult> ClockOutAsync(ProviderContext c, CancellationToken ct) { order.Add($"{c.Profile.Name}-{kind}"); return Task.FromResult(new ProviderResult(RunStatus.Success, "ok")); }
+        public Task<ProviderResult> VerifyResultAsync(ProviderContext c, CancellationToken ct) => Task.FromResult(new ProviderResult(RunStatus.Success, "ok"));
+        public Task LogoutAsync(ProviderContext c, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class RuntimeFakeTelegram : ITelegramService
+    {
+        public Task SendResultAsync(AttendanceResult result, AttendanceProfile profile, TelegramSetting settings, CancellationToken ct) => Task.CompletedTask;
+        public Task SendSummaryAsync(IEnumerable<(AttendanceProfile Profile, IEnumerable<AttendanceResult> Results)> summary, TelegramSetting settings, AttendanceType type, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> TestAsync(TelegramSetting settings, CancellationToken ct) => Task.FromResult(true);
     }
 
     [Theory]
