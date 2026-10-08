@@ -1,0 +1,57 @@
+name: Build Installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish App (win-x64, self-contained)
+        run: dotnet publish src/AttendanceBot.App/AttendanceBot.App.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
+
+      - name: Publish Worker (win-x64, self-contained)
+        run: dotnet publish src/AttendanceBot.Worker/AttendanceBot.Worker.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer (ISS)
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe not found' }
+          & $iscc 'installer\AttendanceBot.iss'
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+
+      - name: Show installer output
+        shell: pwsh
+        run: Get-ChildItem 'installer\Output' | Select-Object Name, Length
+
+      - name: Upload setup to release (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: gh release upload v1.0.2 installer/Output/AttendanceBot-Setup-*.exe --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload setup to release (tag push)
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: gh release upload "${{ github.ref_name }}" installer/Output/AttendanceBot-Setup-*.exe --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
