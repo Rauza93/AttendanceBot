@@ -2,6 +2,11 @@ name: Build Installer
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag for installer upload'
+        required: true
+        default: 'v1.0.3'
   push:
     tags:
       - 'v*'
@@ -42,16 +47,12 @@ jobs:
         shell: pwsh
         run: Get-ChildItem 'installer\Output' | Select-Object Name, Length
 
-      - name: Upload setup to release (manual run)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload setup to release
         shell: pwsh
-        run: gh release upload v1.0.2 installer/Output/AttendanceBot-Setup-*.exe --clobber
         env:
           GH_TOKEN: ${{ github.token }}
-
-      - name: Upload setup to release (tag push)
-        if: github.event_name == 'push'
-        shell: pwsh
-        run: gh release upload "${{ github.ref_name }}" installer/Output/AttendanceBot-Setup-*.exe --clobber
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = if ($env:GITHUB_EVENT_NAME -eq 'push') { $env:GITHUB_REF_NAME } else { "${{ inputs.release_tag }}" }
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $tag --title "AttendanceBot $tag" --generate-notes }
+          gh release upload $tag installer/Output/AttendanceBot-Setup-*.exe --clobber
